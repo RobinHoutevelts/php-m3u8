@@ -11,6 +11,7 @@
 
 namespace Chrisyue\PhpM3u8;
 
+use Chrisyue\PhpM3u8\Lexer;
 use Chrisyue\PhpM3u8\Loader\LoaderInterface;
 use Chrisyue\PhpM3u8\M3u8\M3u8;
 use Chrisyue\PhpM3u8\M3u8\MediaSegment;
@@ -19,6 +20,22 @@ use Chrisyue\PhpM3u8\M3u8\Playlist;
 class Parser
 {
     private $loader;
+    private $lexers;
+
+    public function __construct()
+    {
+        $this->lexers = array(
+            new Lexer\ExtXVersionLexer(),
+            new Lexer\ExtXTargetDurationLexer(),
+            new Lexer\ExtXDiscontinuitySequenceLexer(),
+            new Lexer\ExtXMediaSequenceLexer(),
+            new Lexer\ExtXDiscontinuityLexer(),
+            new Lexer\ExtXByteRangeLexer(),
+            new Lexer\ExtInfLexer(),
+            new Lexer\MediaSegmentUriLexer(),
+            new Lexer\ExtXEndlistLexer(),
+        );
+    }
 
     public function setLoader(LoaderInterface $loader)
     {
@@ -83,64 +100,10 @@ class Parser
         foreach ($lines as $line) {
             $line = trim($line);
 
-            if (preg_match('/^#EXT-X-VERSION:(\d+)/', $line, $matches)) {
-                $tokens['version'] = $matches[1];
-                continue;
-            }
-
-            if (preg_match('/^#EXT-X-TARGETDURATION:(\d+)/', $line, $matches)) {
-                $tokens['targetDuration'] = (int) $matches[1];
-                continue;
-            }
-
-            if (preg_match('/^#EXT-X-MEDIA-SEQUENCE:(\d+)/', $line, $matches)) {
-                $tokens['mediaSequence'] = (int) $matches[1];
-                continue;
-            }
-
-            if (preg_match('/^#EXT-X-DISCONTINUITY-SEQUENCE:(\d+)/', $line, $matches)) {
-                $tokens['discontinuitySequence'] = (int) $matches[1];
-                continue;
-            }
-
-            if (preg_match('/^#EXT-X-DISCONTINUITY/', $line)) {
-                $tokens['playlist'][$mediaSequence]['isDiscontinuity'] = true;
-                continue;
-            }
-
-            if (preg_match('/^#EXTINF:(.+),(.*)$/', $line, $matches)) {
-                $tokens['playlist'][$mediaSequence]['duration'] = $matches[1];
-
-                if (isset($matches[2])) {
-                    $tokens['playlist'][$mediaSequence]['title'] = $matches[2];
+            foreach ($this->lexers as $lexer) {
+                if ($lexer->lex($line, $tokens)) {
+                    continue 2;
                 }
-
-                continue;
-            }
-
-            if (preg_match('/^#EXT-X-BYTERANGE:(\d+)(@(\d+))?$/', $line, $matches)) {
-                $byteRange = new \SplFixedArray(2);
-                $byteRange[0] = (int) $matches[1];
-
-                if (!empty($matches[3])) {
-                    $byteRange[1] = (int) $matches[3];
-                }
-
-                $tokens['playlist'][$mediaSequence]['byteRange'] = $byteRange;
-
-                continue;
-            }
-
-            if (preg_match('/^[^#]+/', $line, $matches)) {
-                $tokens['playlist'][$mediaSequence]['uri'] = $matches[0];
-                ++$mediaSequence;
-
-                continue;
-            }
-
-            if ('#EXT-X-ENDLIST' === $line) {
-                $tokens['isEndless'] = false;
-                break;
             }
         }
 
